@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Live Session — NTProxy | IIIT Surat</title>
+  <link rel="stylesheet" href="/css/style.css"/>
+  <style>
+    .session-layout {
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      gap: 1.5rem;
+      align-items: start;
+    }
+    @media (max-width: 900px) {
+      .session-layout { grid-template-columns: 1fr; }
+    }
+
+    .qr-panel {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      padding: 2rem;
+      display: flex; flex-direction: column; align-items: center; gap: 1.25rem;
+    }
+    .qr-panel-title {
+      font-size: 1rem; font-weight: 700;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .qr-img-wrap {
+      padding: 14px; background: white;
+      border-radius: var(--radius-lg);
+      box-shadow: 0 0 40px var(--accent-glow), var(--shadow-md);
+      transition: opacity 0.3s ease;
+    }
+    .qr-img-wrap.refreshing { opacity: 0.4; }
+    .qr-img-wrap img { display: block; width: 240px; height: 240px; border-radius: 6px; }
+    .qr-countdown {
+      width: 100%;
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .qr-countdown-bar-bg {
+      background: var(--bg-input); border-radius: var(--radius-full);
+      height: 6px; overflow: hidden;
+    }
+    .qr-countdown-bar {
+      height: 100%; border-radius: var(--radius-full);
+      background: linear-gradient(90deg, var(--accent), var(--success));
+      transition: width 0.5s linear;
+    }
+    .qr-countdown-label {
+      font-size: 0.8rem; color: var(--text-muted);
+      display: flex; justify-content: space-between;
+    }
+
+    .attendance-panel {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      overflow: hidden;
+    }
+    .att-panel-header {
+      padding: 1.25rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .att-panel-title { font-size: 1rem; font-weight: 700; }
+    .att-count {
+      font-size: 1.5rem; font-weight: 800;
+      color: var(--success-light);
+    }
+    .att-count span { font-size: 0.9rem; font-weight: 400; color: var(--text-muted); }
+
+    .att-list { max-height: 420px; overflow-y: auto; }
+    .att-list::-webkit-scrollbar { width: 4px; }
+    .att-list::-webkit-scrollbar-track { background: transparent; }
+    .att-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+    .att-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.75rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      transition: background var(--transition);
+    }
+    .att-item:last-child { border-bottom: none; }
+    .att-item:hover { background: var(--bg-card-hover); }
+    .att-item-info { display: flex; flex-direction: column; gap: 2px; }
+    .att-item-name { font-size: 0.875rem; font-weight: 500; }
+    .att-item-meta { font-size: 0.75rem; color: var(--text-muted); }
+
+    .session-controls {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 1.25rem 1.5rem;
+      display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .session-info .session-subject { font-size: 1.1rem; font-weight: 700; }
+    .session-info .session-since { font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px; }
+
+    .ended-overlay {
+      position: fixed; inset: 0; z-index: 200;
+      background: rgba(0,0,0,0.75); backdrop-filter: blur(8px);
+      display: flex; align-items: center; justify-content: center;
+      padding: 1rem;
+    }
+    .ended-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius-xl); padding: 2.5rem;
+      text-align: center; max-width: 420px; width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <div class="page-bg"></div>
+  <div class="page-wrap">
+
+    <nav class="navbar">
+      <div class="navbar-inner">
+        <a href="/prof/dashboard" class="navbar-brand">
+          <div id="logo-nav"></div>
+          <div><span class="brand-name">NTProxy</span><div class="brand-sub">IIIT Surat</div></div>
+        </a>
+        <div class="navbar-right">
+          <div class="qr-timer">
+            <div class="dot"></div>
+            <span id="session-live-label">Live Session</span>
+          </div>
+          <div class="navbar-user">
+            <div class="user-avatar" id="navbar-avatar">PR</div>
+            <span id="navbar-name">Professor</span>
+          </div>
+          <button class="btn btn-ghost btn-sm" id="logout-btn">Sign Out</button>
+        </div>
+      </div>
+    </nav>
+
+    <main class="main-content">
+      <div class="container">
+
+        <!-- Session Controls -->
+        <div class="session-controls" id="session-controls">
+          <div class="session-info">
+            <div class="session-subject" id="session-subject-name">Loading session...</div>
+            <div class="session-since" id="session-since"></div>
+          </div>
+          <div style="display:flex;gap:0.75rem;flex-wrap:wrap">
+            <a id="btn-att-view" href="#" class="btn btn-ghost btn-sm">📋 Full Attendance</a>
+            <button class="btn btn-danger btn-sm" onclick="endSessionPrompt()">⏹ End Session</button>
+          </div>
+        </div>
+
+        <div class="session-layout">
+
+          <!-- QR Panel -->
+          <div class="qr-panel">
+            <div class="qr-panel-title">
+              <span>🔄</span>
+              <span>Live QR Code</span>
+              <span class="badge badge-success" style="margin-left:auto">Auto-refreshes every 5s</span>
+            </div>
+
+            <div class="qr-img-wrap" id="qr-img-wrap">
+              <img id="qr-image" src="" alt="QR Code" width="240" height="240"/>
+            </div>
+
+            <div class="qr-countdown">
+              <div class="qr-countdown-bar-bg">
+                <div class="qr-countdown-bar" id="countdown-bar" style="width:100%"></div>
+              </div>
+              <div class="qr-countdown-label">
+                <span id="countdown-text">Refreshing in 5s...</span>
+                <span id="qr-token" style="font-family:monospace;font-size:0.7rem;opacity:0.4"></span>
+              </div>
+            </div>
+
+            <div id="qr-url-display" style="width:100%;background:var(--bg-input);border-radius:var(--radius-md);padding:0.6rem 0.8rem;font-size:0.7rem;color:var(--text-muted);word-break:break-all;font-family:monospace"></div>
+          </div>
+
+          <!-- Live Attendance Panel -->
+          <div class="attendance-panel">
+            <div class="att-panel-header">
+              <div class="att-panel-title">Live Attendance</div>
+              <div>
+                <div class="att-count" id="att-count">0 <span>/ 0</span></div>
+              </div>
+            </div>
+            <div class="att-list" id="att-list">
+              <div style="text-align:center;padding:2rem;color:var(--text-muted)">
+                <div class="spinner" style="margin:0 auto 0.5rem"></div>
+                <div style="font-size:0.85rem">Waiting for students...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- Confirm End Session Modal -->
+  <div class="modal-overlay hidden" id="confirm-end-modal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <div class="modal-title">⏹ End Session?</div>
+        <button class="modal-close" onclick="closeModal('confirm-end-modal')">✕</button>
+      </div>
+      <p style="color:var(--text-secondary);margin-bottom:1.5rem;font-size:0.95rem;line-height:1.5">Are you sure you want to end this session? Students will no longer be able to scan in, and the QR code will expire immediately.</p>
+      <div style="display:flex;gap:0.75rem">
+        <button class="btn btn-ghost" onclick="closeModal('confirm-end-modal')" style="flex:1">Cancel</button>
+        <button class="btn btn-danger" onclick="executeEndSession()" style="flex:1">Yes, End</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Session Ended Overlay -->
+  <div class="ended-overlay" id="ended-overlay" style="display:none">
+    <div class="ended-card">
+      <div style="font-size:3rem;margin-bottom:1rem">⏹</div>
+      <h2 style="margin-bottom:0.75rem">Session Ended</h2>
+      <p id="ended-summary" style="color:var(--text-secondary);margin-bottom:2rem"></p>
+      <div style="display:flex;flex-direction:column;gap:0.75rem">
+        <a id="ended-csv-link" href="#" class="btn btn-success btn-full">⬇ Download CSV</a>
+        <a href="/prof/dashboard" class="btn btn-ghost btn-full">← Back to Dashboard</a>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    const sessionId = new URLSearchParams(window.location.search).get('id');
+    let qrInterval, attInterval, countdownInterval;
+    let secondsLeft = 5;
+    let sessionEnded = false;
+
+    async function init() {
+      const user = await requireProfessor('/login');
+      if (!user) return;
+      if (!sessionId) { window.location.href = '/prof/dashboard'; return; }
+
+      document.getElementById('logo-nav').innerHTML = window.LOGO_SVG;
+      initNavbar(user);
+      document.getElementById('btn-att-view').href = `/prof/attendance?id=${sessionId}`;
+
+      // Start loops
+      await Promise.all([refreshQR(), refreshAttendance()]);
+      startCountdown();
+      qrInterval  = setInterval(refreshQR, 5000);
+      attInterval = setInterval(refreshAttendance, 3000);
+    }
+
+    async function refreshQR() {
+      try {
+        const { qr, url, token, subjectName } = await api(`/api/prof/session/${sessionId}/qr`);
+        document.getElementById('qr-image').src = qr;
+        document.getElementById('qr-url-display').textContent = url;
+        document.getElementById('qr-token').textContent = token;
+        document.getElementById('session-subject-name').textContent = subjectName;
+        document.getElementById('session-live-label').textContent = `Live — ${subjectName}`;
+        document.getElementById('qr-img-wrap').classList.remove('refreshing');
+        secondsLeft = 5;
+      } catch (err) {
+        if (err.message.includes('not active')) {
+          sessionEnded = true;
+          clearIntervals();
+        }
+        document.getElementById('qr-img-wrap').classList.add('refreshing');
+      }
+    }
+
+    async function refreshAttendance() {
+      try {
+        const { students, presentCount, totalCount } = await api(`/api/prof/session/${sessionId}/attendance`);
+        document.getElementById('att-count').innerHTML = `${presentCount} <span>/ ${totalCount}</span>`;
+
+        const present = students.filter(s => s.present);
+        const absent  = students.filter(s => !s.present);
+
+        if (students.length === 0) {
+          document.getElementById('att-list').innerHTML = `<div style="text-align:center;padding:2rem;color:var(--text-muted);font-size:0.85rem">No students enrolled yet.</div>`;
+          return;
+        }
+
+        document.getElementById('att-list').innerHTML = [
+          ...present.map(s => `
+            <div class="att-item">
+              <div class="att-item-info">
+                <div class="att-item-name">${s.name}</div>
+                <div class="att-item-meta">${s.id} · Marked ${formatTime(s.timestamp)}</div>
+              </div>
+              <span class="badge badge-success">✓ Present</span>
+            </div>`),
+          ...absent.map(s => `
+            <div class="att-item">
+              <div class="att-item-info">
+                <div class="att-item-name" style="color:var(--text-muted)">${s.name}</div>
+                <div class="att-item-meta">${s.id} · ${s.branch || ''}</div>
+              </div>
+              <span class="badge badge-muted">Absent</span>
+            </div>`)
+        ].join('');
+      } catch {}
+    }
+
+    function startCountdown() {
+      clearInterval(countdownInterval);
+      countdownInterval = setInterval(() => {
+        secondsLeft = Math.max(0, secondsLeft - 1);
+        const pct = (secondsLeft / 5) * 100;
+        document.getElementById('countdown-bar').style.width = pct + '%';
+        document.getElementById('countdown-text').textContent = secondsLeft > 0 ? `Refreshing in ${secondsLeft}s...` : 'Refreshing...';
+        if (secondsLeft === 0) {
+          document.getElementById('qr-img-wrap').classList.add('refreshing');
+          secondsLeft = 5;
+        }
+      }, 1000);
+    }
+
+    function clearIntervals() {
+      clearInterval(qrInterval);
+      clearInterval(attInterval);
+      clearInterval(countdownInterval);
+    }
+
+    function endSessionPrompt() {
+      openModal('confirm-end-modal');
+    }
+
+    async function executeEndSession() {
+      closeModal('confirm-end-modal');
+      try {
+        await api('/api/prof/session/end', { method: 'POST', body: { sessionId } });
+        clearIntervals();
+        const { presentCount, totalCount } = await api(`/api/prof/session/${sessionId}/attendance`).then(d => d);
+        document.getElementById('ended-summary').textContent = `Session ended. ${presentCount} out of ${totalCount} students marked present.`;
+        document.getElementById('ended-csv-link').href = `/api/prof/session/${sessionId}/attendance/csv`;
+        document.getElementById('ended-overlay').style.display = 'flex';
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    function openModal(id)  { document.getElementById(id).classList.remove('hidden'); }
+    function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+
+    // Close modal on overlay click
+    document.querySelectorAll('.modal-overlay').forEach(overlay => {
+      overlay.addEventListener('click', e => { 
+        if (e.target === overlay && !overlay.id.includes('ended')) overlay.classList.add('hidden'); 
+      });
+    });
+
+    init();
+  </script>
+</body>
+</html>

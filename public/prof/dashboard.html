@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Professor Dashboard — NTProxy | IIIT Surat</title>
+  <meta name="description" content="Manage subjects, enroll students, and start attendance sessions."/>
+  <link rel="stylesheet" href="/css/style.css"/>
+  <style>
+    .subject-action-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 1.4rem;
+      display: flex; flex-direction: column; gap: 0.8rem;
+      transition: var(--transition);
+    }
+    .subject-action-card:hover { border-color: rgba(255,255,255,0.12); }
+    .subject-action-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; }
+    .subject-name { font-size: 1.05rem; font-weight: 700; }
+    .subject-meta { font-size: 0.8rem; color: var(--text-muted); margin-top: 2px; }
+    .subject-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
+    .create-subject-card {
+      background: linear-gradient(135deg, rgba(99,102,241,0.08) 0%, rgba(16,185,129,0.06) 100%);
+      border: 1px dashed rgba(99,102,241,0.3);
+      border-radius: var(--radius-lg);
+      padding: 1.4rem;
+      display: flex; align-items: center; justify-content: center;
+      gap: 0.75rem;
+      cursor: pointer;
+      color: var(--accent-light);
+      font-weight: 600;
+      transition: var(--transition);
+    }
+    .create-subject-card:hover { border-color: var(--accent); background: rgba(99,102,241,0.12); }
+
+    .active-session-banner {
+      background: linear-gradient(135deg, rgba(16,185,129,0.12), rgba(16,185,129,0.06));
+      border: 1px solid rgba(16,185,129,0.3);
+      border-radius: var(--radius-lg);
+      padding: 1rem 1.4rem;
+      display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .active-session-info { display: flex; align-items: center; gap: 10px; }
+    .live-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: var(--success);
+      animation: pulse 1s infinite;
+    }
+  </style>
+</head>
+<body>
+  <div class="page-bg"></div>
+  <div class="page-wrap">
+
+    <nav class="navbar">
+      <div class="navbar-inner">
+        <a href="/prof/dashboard" class="navbar-brand">
+          <div id="logo-nav"></div>
+          <div><span class="brand-name">NTProxy</span><div class="brand-sub">IIIT Surat</div></div>
+        </a>
+        <div class="navbar-right">
+          <a href="/prof/reports" class="btn btn-ghost btn-sm">📊 Reports</a>
+          <div class="navbar-user">
+            <div class="user-avatar" id="navbar-avatar">PR</div>
+            <span id="navbar-name">Professor</span>
+          </div>
+          <button class="btn btn-ghost btn-sm" id="logout-btn">Sign Out</button>
+        </div>
+      </div>
+    </nav>
+
+    <div class="page-header">
+      <div class="container">
+        <h1>Professor Dashboard</h1>
+        <p id="prof-tagline">Manage your subjects and attendance sessions</p>
+      </div>
+    </div>
+
+    <main class="main-content">
+      <div class="container">
+
+        <!-- Active Session Banner -->
+        <div id="active-session-banner" style="display:none" class="active-session-banner">
+          <div class="active-session-info">
+            <div class="live-dot"></div>
+            <div>
+              <div style="font-weight:700;color:var(--success-light)">Active Session Running</div>
+              <div id="active-session-name" style="font-size:0.85rem;color:var(--text-secondary)"></div>
+            </div>
+          </div>
+          <a href="#" id="active-session-link" class="btn btn-success btn-sm">📺 View QR & Attendance</a>
+        </div>
+
+        <!-- Stats -->
+        <div class="stats-grid" style="margin-bottom:2rem">
+          <div class="stat-card">
+            <div class="stat-value" id="stat-subs" style="color:var(--accent-light)">—</div>
+            <div class="stat-label">Subjects</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="stat-students" style="color:var(--success-light)">—</div>
+            <div class="stat-label">Total Students</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="stat-sessions" style="color:var(--warning-light)">—</div>
+            <div class="stat-label">Sessions Held</div>
+          </div>
+        </div>
+
+        <!-- Subjects -->
+        <div class="section-header">
+          <div>
+            <div class="section-title">My Subjects</div>
+            <div class="section-subtitle">Start a session to generate attendance QR</div>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="loadSubjects()">↺ Refresh</button>
+        </div>
+
+        <div id="subjects-container">
+          <div class="empty-state"><div class="spinner spinner-lg" style="margin:0 auto 1rem"></div><p>Loading...</p></div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- Create Subject Modal -->
+  <div class="modal-overlay hidden" id="create-modal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <div class="modal-title">📚 Create New Subject</div>
+        <button class="modal-close" onclick="closeModal('create-modal')">✕</button>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Subject Name</label>
+        <input class="form-control" type="text" id="subject-name-input" placeholder="e.g. Data Structures & Algorithms"/>
+      </div>
+      <div id="create-modal-err" class="alert alert-error" style="display:none"></div>
+      <div style="display:flex;gap:0.75rem;margin-top:1rem">
+        <button class="btn btn-ghost" onclick="closeModal('create-modal')">Cancel</button>
+        <button class="btn btn-primary" onclick="createSubject()" style="flex:1">Create Subject</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Enroll Students Modal -->
+  <div class="modal-overlay hidden" id="enroll-modal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <div class="modal-title">👥 Manage Enrollment</div>
+        <button class="modal-close" onclick="closeModal('enroll-modal')">✕</button>
+      </div>
+      <p id="enroll-subject-name" style="color:var(--text-secondary);margin-bottom:1rem;font-size:0.875rem"></p>
+
+      <div class="form-group">
+        <label class="form-label">Search & Add Students (by ID or Name)</label>
+        <div style="display:flex;gap:0.5rem">
+          <input class="form-control" type="text" id="student-search" placeholder="STU001 or student name..." oninput="searchStudents()"/>
+        </div>
+      </div>
+      <div id="search-results" style="margin-bottom:1rem"></div>
+
+      <div style="border-top:1px solid var(--border);padding-top:1rem;margin-top:0.5rem">
+        <div style="font-size:0.8rem;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.75rem">Enrolled Students</div>
+        <div id="enrolled-list"></div>
+      </div>
+      <div id="enroll-msg" class="alert alert-info" style="display:none;margin-top:0.75rem"></div>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    let subjects = [];
+    let currentEnrollSubjectId = null;
+    let searchTimeout;
+
+    async function init() {
+      const user = await requireProfessor('/login');
+      if (!user) return;
+      document.getElementById('logo-nav').innerHTML = window.LOGO_SVG;
+      initNavbar(user);
+      document.getElementById('prof-tagline').textContent = `Welcome, ${user.name}`;
+      loadSubjects();
+      checkActiveSessions();
+    }
+
+    async function checkActiveSessions() {
+      try {
+        const { sessions } = await api('/api/prof/sessions');
+        const active = sessions.find(s => s.status === 'active');
+        if (active) {
+          document.getElementById('active-session-banner').style.display = 'flex';
+          document.getElementById('active-session-name').textContent = `Subject: ${active.subject_name}`;
+          document.getElementById('active-session-link').href = `/prof/session?id=${active.session_id}`;
+        }
+      } catch {}
+    }
+
+    async function loadSubjects() {
+      const container = document.getElementById('subjects-container');
+      try {
+        const data = await api('/api/prof/subjects');
+        subjects = data.subjects;
+
+        const totalStudents = subjects.reduce((a, s) => a + s.student_count, 0);
+        const totalSessions = subjects.reduce((a, s) => a + s.session_count, 0);
+        document.getElementById('stat-subs').textContent = subjects.length;
+        document.getElementById('stat-students').textContent = totalStudents;
+        document.getElementById('stat-sessions').textContent = totalSessions;
+
+        let html = `<div class="subjects-grid">`;
+        html += `<div class="create-subject-card" onclick="openModal('create-modal')">
+          <span style="font-size:1.5rem">+</span> New Subject
+        </div>`;
+        subjects.forEach(s => {
+          html += `
+            <div class="subject-action-card">
+              <div class="subject-action-header">
+                <div>
+                  <div class="subject-name">${s.name}</div>
+                  <div class="subject-meta">👥 ${s.student_count} students · 📅 ${s.session_count} sessions</div>
+                </div>
+                <span class="badge badge-accent">#${s.id}</span>
+              </div>
+              <div class="subject-actions">
+                <button class="btn btn-success btn-sm" onclick="startSession(${s.id}, '${s.name.replace(/'/g,"\\'")}')">▶ Start Session</button>
+                <button class="btn btn-ghost btn-sm" onclick="openEnroll(${s.id}, '${s.name.replace(/'/g,"\\'")}')">👥 Enroll</button>
+                <a href="/prof/reports?subject=${s.id}" class="btn btn-ghost btn-sm">📊 Reports</a>
+              </div>
+            </div>`;
+        });
+        html += `</div>`;
+        container.innerHTML = html;
+      } catch (err) {
+        container.innerHTML = `<div class="alert alert-error">${err.message}</div>`;
+      }
+    }
+
+    async function startSession(subjectId, subjectName) {
+      try {
+        const { sessionId, error } = await api('/api/prof/session/start', {
+          method: 'POST', body: { subjectId }
+        }).catch(async (err) => {
+          // If active session exists, ask to view it
+          if (err.message.includes('already exists')) {
+            const data = await api('/api/prof/sessions');
+            const active = data.sessions.find(s => s.subject_id === subjectId && s.status === 'active');
+            if (active && confirm(`An active session already exists for "${subjectName}". Go to it?`)) {
+              window.location.href = `/prof/session?id=${active.session_id}`;
+            }
+            return {};
+          }
+          throw err;
+        });
+        if (sessionId) {
+          showToast(`Session started for ${subjectName}!`, 'success');
+          window.location.href = `/prof/session?id=${sessionId}`;
+        }
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    async function createSubject() {
+      const name = document.getElementById('subject-name-input').value.trim();
+      const errEl = document.getElementById('create-modal-err');
+      errEl.style.display = 'none';
+      if (!name) { errEl.textContent = 'Subject name is required.'; errEl.style.display = 'flex'; return; }
+      try {
+        await api('/api/prof/subjects', { method: 'POST', body: { name } });
+        closeModal('create-modal');
+        document.getElementById('subject-name-input').value = '';
+        showToast('Subject created!', 'success');
+        loadSubjects();
+      } catch (err) {
+        errEl.textContent = err.message; errEl.style.display = 'flex';
+      }
+    }
+
+    async function openEnroll(subjectId, subjectName) {
+      currentEnrollSubjectId = subjectId;
+      document.getElementById('enroll-subject-name').textContent = `Subject: ${subjectName}`;
+      document.getElementById('student-search').value = '';
+      document.getElementById('search-results').innerHTML = '';
+      document.getElementById('enroll-msg').style.display = 'none';
+      openModal('enroll-modal');
+      loadEnrolled();
+    }
+
+    async function loadEnrolled() {
+      const el = document.getElementById('enrolled-list');
+      el.innerHTML = '<div class="spinner" style="display:block;margin:0.5rem auto"></div>';
+      try {
+        const { students } = await api(`/api/prof/subjects/${currentEnrollSubjectId}/students`);
+        if (students.length === 0) {
+          el.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem">No students enrolled yet.</div>';
+          return;
+        }
+        el.innerHTML = students.map(s => `
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:0.5rem 0;border-bottom:1px solid var(--border)">
+            <div>
+              <div style="font-size:0.875rem;font-weight:500">${s.name}</div>
+              <div style="font-size:0.75rem;color:var(--text-muted)">${s.id} · ${s.branch || ''} Sem ${s.semester || ''}</div>
+            </div>
+            <button class="btn btn-danger btn-sm" onclick="unenroll('${s.id}')">Remove</button>
+          </div>`).join('');
+      } catch { el.innerHTML = '<div class="alert alert-error">Failed to load students.</div>'; }
+    }
+
+    async function searchStudents() {
+      clearTimeout(searchTimeout);
+      const q = document.getElementById('student-search').value.trim();
+      const el = document.getElementById('search-results');
+      if (!q) { el.innerHTML = ''; return; }
+      searchTimeout = setTimeout(async () => {
+        try {
+          const { students } = await api(`/api/prof/students/search?q=${encodeURIComponent(q)}`);
+          if (!students.length) { el.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;padding:0.5rem">No students found.</div>'; return; }
+          el.innerHTML = `<div style="background:var(--bg-input);border-radius:var(--radius-md);padding:0.5rem;margin-top:0.25rem">` +
+            students.map(s => `
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:0.4rem 0.5rem;border-radius:6px;transition:background 0.15s" onmouseover="this.style.background='var(--bg-card)'" onmouseout="this.style.background=''">
+                <div>
+                  <div style="font-size:0.875rem">${s.name} <span style="color:var(--text-muted)">(${s.id})</span></div>
+                  <div style="font-size:0.75rem;color:var(--text-muted)">${s.branch || ''} · Sem ${s.semester || ''}</div>
+                </div>
+                <button class="btn btn-success btn-sm" onclick="enrollOne('${s.id}')">+ Add</button>
+              </div>`).join('') + `</div>`;
+        } catch { el.innerHTML = ''; }
+      }, 300);
+    }
+
+    async function enrollOne(studentId) {
+      const msgEl = document.getElementById('enroll-msg');
+      try {
+        const { enrolled, notFound } = await api(`/api/prof/subjects/${currentEnrollSubjectId}/enroll`, {
+          method: 'POST', body: { studentIds: [studentId] }
+        });
+        msgEl.textContent = enrolled > 0 ? '✓ Student enrolled!' : 'Already enrolled.';
+        msgEl.className = 'alert alert-success';
+        msgEl.style.display = 'flex';
+        document.getElementById('student-search').value = '';
+        document.getElementById('search-results').innerHTML = '';
+        loadEnrolled();
+        setTimeout(() => msgEl.style.display = 'none', 2000);
+      } catch (err) { msgEl.textContent = err.message; msgEl.className = 'alert alert-error'; msgEl.style.display = 'flex'; }
+    }
+
+    async function unenroll(studentId) {
+      if (!confirm('Remove this student from the subject?')) return;
+      try {
+        await api(`/api/prof/subjects/${currentEnrollSubjectId}/students/${studentId}`, { method: 'DELETE' });
+        showToast('Student removed.', 'info');
+        loadEnrolled();
+      } catch (err) { showToast(err.message, 'error'); }
+    }
+
+    function openModal(id)  { document.getElementById(id).classList.remove('hidden'); }
+    function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+
+    // Close modal on overlay click
+    document.querySelectorAll('.modal-overlay').forEach(overlay => {
+      overlay.addEventListener('click', e => { if (e.target === overlay) overlay.classList.add('hidden'); });
+    });
+
+    // Enter key for create subject
+    document.getElementById('subject-name-input').addEventListener('keydown', e => { if (e.key === 'Enter') createSubject(); });
+
+    init();
+  </script>
+</body>
+</html>

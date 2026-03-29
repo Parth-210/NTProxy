@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Student Dashboard — NTProxy | IIIT Surat</title>
+  <meta name="description" content="View your subject-wise attendance percentage and manage attendance at IIIT Surat."/>
+  <link rel="stylesheet" href="/css/style.css"/>
+  <style>
+    .welcome-banner {
+      background: linear-gradient(135deg, rgba(99,102,241,0.15) 0%, rgba(16,185,129,0.1) 100%);
+      border: 1px solid rgba(99,102,241,0.2);
+      border-radius: var(--radius-xl);
+      padding: 1.75rem 2rem;
+      margin-bottom: 2rem;
+      display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;
+    }
+    .welcome-text h2 { font-size: 1.35rem; font-weight: 800; }
+    .welcome-text .sub { color: var(--text-secondary); margin-top: 0.25rem; font-size: 0.9rem; }
+    .scan-big-btn {
+      display: flex; align-items: center; gap: 10px;
+      padding: 0.85rem 1.75rem;
+      background: linear-gradient(135deg, var(--accent), var(--success));
+      border: none; border-radius: var(--radius-lg);
+      color: white; font-family: var(--font); font-size: 1rem; font-weight: 700;
+      cursor: pointer; text-decoration: none;
+      box-shadow: 0 6px 20px rgba(99,102,241,0.35);
+      transition: var(--transition);
+      white-space: nowrap;
+    }
+    .scan-big-btn:hover { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(99,102,241,0.45); }
+    .scan-icon { font-size: 1.3rem; }
+
+    .subject-card-footer { display: flex; gap: 0.5rem; margin-top: 0.5rem; flex-wrap: wrap; }
+    .att-bar-wrap { flex: 1; }
+    .att-bar-bg { background: var(--bg-input); border-radius: var(--radius-full); height: 6px; overflow: hidden; }
+    .att-bar-fill { height:100%; border-radius: var(--radius-full); transition: width 0.8s ease; }
+    .att-bar-fill.good { background: linear-gradient(90deg, var(--success), var(--success-light)); }
+    .att-bar-fill.warn { background: linear-gradient(90deg, var(--warning), var(--warning-light)); }
+    .att-bar-fill.bad  { background: linear-gradient(90deg, var(--danger), var(--danger-light)); }
+    .att-bar-label { font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <div class="page-bg"></div>
+  <div class="page-wrap">
+
+    <!-- Navbar -->
+    <nav class="navbar">
+      <div class="navbar-inner">
+        <a href="/student/dashboard" class="navbar-brand">
+          <div id="logo-nav"></div>
+          <div>
+            <span class="brand-name">NTProxy</span>
+            <div class="brand-sub">IIIT Surat</div>
+          </div>
+        </a>
+        <div class="navbar-right">
+          <a href="/student/attendance" class="btn btn-ghost btn-sm">📋 History</a>
+          <div class="navbar-user">
+            <div class="user-avatar" id="navbar-avatar">ST</div>
+            <span id="navbar-name">Student</span>
+          </div>
+          <button class="btn btn-ghost btn-sm" id="logout-btn">Sign Out</button>
+        </div>
+      </div>
+    </nav>
+
+    <main class="main-content">
+      <div class="container">
+
+        <!-- Welcome Banner -->
+        <div class="welcome-banner">
+          <div class="welcome-text">
+            <h2>Welcome back, <span id="student-name">Student</span>! 👋</h2>
+            <p class="sub" id="student-meta">Loading your info...</p>
+          </div>
+          <a href="/scan" class="scan-big-btn">
+            <span class="scan-icon">📷</span> Scan QR Code
+          </a>
+        </div>
+
+        <!-- Stats -->
+        <div class="stats-grid" id="stats-grid" style="margin-bottom:2rem">
+          <div class="stat-card">
+            <div class="stat-value" id="stat-subjects" style="color:var(--accent-light)">—</div>
+            <div class="stat-label">Subjects Enrolled</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="stat-avg" style="color:var(--success-light)">—</div>
+            <div class="stat-label">Avg. Attendance</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="stat-low" style="color:var(--warning-light)">—</div>
+            <div class="stat-label">Below 75%</div>
+          </div>
+        </div>
+
+        <!-- Subjects -->
+        <div class="section-header">
+          <div>
+            <div class="section-title">My Subjects</div>
+            <div class="section-subtitle">Tap a subject to view date-wise attendance</div>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="loadSubjects()">↺ Refresh</button>
+        </div>
+
+        <div id="subjects-container">
+          <div class="empty-state">
+            <div class="spinner spinner-lg" style="margin:0 auto 1rem"></div>
+            <p>Loading subjects...</p>
+          </div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    let user;
+
+    async function init() {
+      user = await requireStudent('/login');
+      if (!user) return;
+      document.getElementById('logo-nav').innerHTML = window.LOGO_SVG;
+      initNavbar(user);
+      document.getElementById('student-name').textContent = user.name.split(' ')[0];
+      document.getElementById('student-meta').textContent = `${user.branch || 'IIIT Surat'} · Semester ${user.semester || '—'}`;
+      loadSubjects();
+    }
+
+    async function loadSubjects() {
+      const container = document.getElementById('subjects-container');
+      try {
+        const { subjects } = await api('/api/student/subjects');
+
+        const total = subjects.length;
+        const avgPct = total > 0 ? Math.round(subjects.reduce((a, s) => a + s.percentage, 0) / total) : 0;
+        const lowCount = subjects.filter(s => s.percentage < 75).length;
+
+        document.getElementById('stat-subjects').textContent = total;
+        document.getElementById('stat-avg').textContent = `${avgPct}%`;
+        document.getElementById('stat-low').textContent = lowCount;
+
+        if (subjects.length === 0) {
+          container.innerHTML = `
+            <div class="empty-state">
+              <div class="empty-icon">📚</div>
+              <h3>No subjects yet</h3>
+              <p>You haven't been enrolled in any subjects. Please contact your professor.</p>
+            </div>`;
+          return;
+        }
+
+        container.innerHTML = `<div class="subjects-grid">${subjects.map(s => {
+          const cls = s.percentage >= 75 ? 'good' : s.percentage >= 50 ? 'warn' : 'bad';
+          const color = s.percentage >= 75 ? 'var(--success-light)' : s.percentage >= 50 ? 'var(--warning-light)' : 'var(--danger-light)';
+          return `
+            <div class="subject-card" onclick="window.location.href='/student/attendance?subject=${s.id}'">
+              <div class="subject-card-header">
+                <div>
+                  <div class="subject-card-name">${s.name}</div>
+                  <div class="subject-card-prof">👨‍🏫 ${s.professor_name}</div>
+                </div>
+                ${buildProgressRing(s.percentage, 64)}
+              </div>
+              <div class="att-bar-wrap">
+                <div class="att-bar-bg"><div class="att-bar-fill ${cls}" style="width:${s.percentage}%"></div></div>
+                <div class="att-bar-label">${s.attended}/${s.total_sessions} sessions attended</div>
+              </div>
+              <div class="subject-card-footer">
+                <span class="badge badge-${cls === 'good' ? 'success' : cls === 'warn' ? 'warning' : 'danger'}">
+                  ${s.percentage >= 75 ? '✓ Good Standing' : s.percentage >= 50 ? '⚠ At Risk' : '✕ Low Attendance'}
+                </span>
+              </div>
+            </div>`;
+        }).join('')}</div>`;
+      } catch (err) {
+        container.innerHTML = `<div class="alert alert-error">${err.message}</div>`;
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>

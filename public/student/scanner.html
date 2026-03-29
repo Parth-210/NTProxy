@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Scan QR Code — NTProxy</title>
+  <link rel="stylesheet" href="/css/style.css"/>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    .scanner-page { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:2rem 1rem; }
+    .scanner-wrap { width:100%; max-width:480px; }
+    .scanner-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      overflow: hidden;
+      box-shadow: var(--shadow-lg);
+    }
+    .scanner-header {
+      padding: 1.5rem 1.75rem 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .scanner-header h1 { font-size: 1.2rem; font-weight: 700; }
+    .scanner-header p  { font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.25rem; }
+
+    .scanner-body { padding: 1.5rem; }
+
+    #qr-reader { width: 100%; border-radius: var(--radius-lg); overflow: hidden; }
+    #qr-reader video { width: 100% !important; border-radius: var(--radius-md); }
+    /* Override html5-qrcode styles */
+    #qr-reader__status_span { color: var(--text-secondary) !important; }
+    #qr-reader__dashboard_section_csr button {
+      background: var(--accent) !important; border: none !important;
+      color: white !important; border-radius: var(--radius-md) !important;
+      font-family: var(--font) !important; font-weight: 600 !important;
+      padding: 0.5rem 1rem !important; cursor: pointer !important;
+    }
+    #qr-reader__dashboard_section_fsr { display: none !important; }
+
+    .scan-hint {
+      text-align: center; padding: 1rem;
+      font-size: 0.85rem; color: var(--text-muted);
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+    }
+
+    .scanning-frame {
+      position: relative; display: flex; align-items: center; justify-content: center;
+      background: #000; border-radius: var(--radius-lg); overflow: hidden;
+      min-height: 280px;
+    }
+    .scan-overlay {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      pointer-events: none;
+    }
+    .scan-box {
+      width: 200px; height: 200px; border-radius: 12px;
+      border: 2px solid var(--accent);
+      box-shadow: 0 0 0 4000px rgba(0,0,0,0.5);
+    }
+    .scan-line {
+      position: absolute;
+      width: 80%; height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      animation: scanLine 2s linear infinite;
+    }
+    @keyframes scanLine {
+      0%   { top: calc(50% - 100px); opacity: 1; }
+      50%  { top: calc(50% + 100px); opacity: 1; }
+      100% { top: calc(50% - 100px); opacity: 1; }
+    }
+
+    .cam-controls { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; margin-top: 1rem; }
+
+    .divider {
+      display: flex; align-items: center; gap: 1rem; margin: 1.25rem 0;
+      color: var(--text-muted); font-size: 0.8rem;
+    }
+    .divider::before, .divider::after {
+      content: ''; flex: 1; height: 1px; background: var(--border);
+    }
+
+    .manual-form { display: flex; flex-direction: column; gap: 0.75rem; }
+  </style>
+</head>
+<body>
+  <div class="page-bg"></div>
+  <div class="scanner-page">
+    <div class="scanner-wrap">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:1.5rem">
+        <a href="/student/dashboard" class="btn btn-ghost btn-sm">← Back</a>
+        <div style="display:flex;align-items:center;gap:8px;font-weight:700">
+          <div id="logo-nav" style="width:28px;height:28px"></div> NTProxy
+        </div>
+      </div>
+
+      <div class="scanner-card">
+        <div class="scanner-header">
+          <h1>📷 Scan QR Code</h1>
+          <p>Point your camera at the QR code displayed by your professor</p>
+        </div>
+        <div class="scanner-body">
+
+          <div id="qr-reader"></div>
+          <div class="scan-hint">📡 Hold steady — scanning for QR code...</div>
+
+          <div class="cam-controls">
+            <button class="btn btn-ghost btn-sm" id="btn-start" onclick="startCamera()">Start Camera</button>
+            <button class="btn btn-ghost btn-sm" id="btn-stop" onclick="stopCamera()" style="display:none">Stop Camera</button>
+          </div>
+
+          <div class="divider">or enter URL manually</div>
+
+          <div class="manual-form">
+            <input class="form-control" type="url" id="manual-url" placeholder="Paste attendance URL here..."/>
+            <button class="btn btn-primary btn-full" onclick="submitManual()">Mark Attendance</button>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    let scanner = null;
+    let scanning = false;
+
+    async function init() {
+      const user = await requireStudent('/login');
+      if (!user) return;
+      document.getElementById('logo-nav').innerHTML = window.LOGO_SVG;
+      // Auto-start camera
+      startCamera();
+    }
+
+    async function startCamera() {
+      document.getElementById('btn-start').style.display = 'none';
+      document.getElementById('btn-stop').style.display = '';
+
+      try {
+        scanner = new Html5Qrcode('qr-reader');
+        await scanner.start(
+          { facingMode: 'environment' },
+          { fps: 10, qrbox: { width: 220, height: 220 }, aspectRatio: 1 },
+          onScanSuccess,
+          null
+        );
+        scanning = true;
+      } catch (err) {
+        showToast('Camera error: ' + err.message, 'error', 4000);
+        document.getElementById('btn-start').style.display = '';
+        document.getElementById('btn-stop').style.display = 'none';
+      }
+    }
+
+    async function stopCamera() {
+      if (scanner && scanning) {
+        await scanner.stop();
+        scanning = false;
+      }
+      document.getElementById('btn-start').style.display = '';
+      document.getElementById('btn-stop').style.display = 'none';
+    }
+
+    async function onScanSuccess(decodedText) {
+      await stopCamera();
+      // Validate it's an NTProxy attendance URL
+      if (decodedText.includes('/mark?') || decodedText.includes('session_id=')) {
+        showToast('QR detected! Marking attendance...', 'success');
+        setTimeout(() => { window.location.href = decodedText; }, 500);
+      } else {
+        showToast('Invalid QR code. Please scan an NTProxy QR code.', 'error', 4000);
+        setTimeout(startCamera, 2000);
+      }
+    }
+
+    function submitManual() {
+      const url = document.getElementById('manual-url').value.trim();
+      if (!url || !url.includes('session_id=')) {
+        showToast('Please enter a valid attendance URL.', 'error');
+        return;
+      }
+      window.location.href = url;
+    }
+
+    init();
+  </script>
+</body>
+</html>

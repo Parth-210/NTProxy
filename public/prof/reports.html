@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Attendance Reports — NTProxy | IIIT Surat</title>
+  <link rel="stylesheet" href="/css/style.css"/>
+  <style>
+    .subject-tabs {
+      display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1.5rem;
+    }
+    .subject-tab-btn {
+      padding: 0.5rem 1.1rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-full);
+      background: var(--bg-card);
+      color: var(--text-secondary);
+      font-family: var(--font); font-size: 0.85rem; font-weight: 500;
+      cursor: pointer; transition: var(--transition);
+    }
+    .subject-tab-btn:hover { border-color: var(--accent); color: var(--accent-light); }
+    .subject-tab-btn.active { background: var(--accent); border-color: var(--accent); color: white; }
+
+    .report-summary {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); gap: 1rem; margin-bottom: 1.5rem;
+    }
+    .pct-bar-bg { background: var(--bg-input); height: 4px; border-radius: 9999px; margin-top: 4px; }
+    .pct-bar-fill { height: 100%; border-radius: 9999px; transition: width 0.6s ease; }
+    .pct-bar-fill.good { background: var(--success); }
+    .pct-bar-fill.warn { background: var(--warning); }
+    .pct-bar-fill.bad  { background: var(--danger); }
+  </style>
+</head>
+<body>
+  <div class="page-bg"></div>
+  <div class="page-wrap">
+
+    <nav class="navbar">
+      <div class="navbar-inner">
+        <a href="/prof/dashboard" class="navbar-brand">
+          <div id="logo-nav"></div>
+          <div><span class="brand-name">NTProxy</span><div class="brand-sub">IIIT Surat</div></div>
+        </a>
+        <div class="navbar-right">
+          <a href="/prof/dashboard" class="btn btn-ghost btn-sm">← Dashboard</a>
+          <div class="navbar-user">
+            <div class="user-avatar" id="navbar-avatar">PR</div>
+            <span id="navbar-name">Professor</span>
+          </div>
+          <button class="btn btn-ghost btn-sm" id="logout-btn">Sign Out</button>
+        </div>
+      </div>
+    </nav>
+
+    <div class="page-header">
+      <div class="container">
+        <h1>📊 Attendance Reports</h1>
+        <p>Subject-wise attendance summary and CSV exports</p>
+      </div>
+    </div>
+
+    <main class="main-content">
+      <div class="container">
+
+        <div id="subject-tabs" class="subject-tabs">
+          <div class="spinner" style="margin:0.5rem auto"></div>
+        </div>
+
+        <div id="report-content">
+          <div class="empty-state">
+            <div class="empty-icon">📊</div>
+            <h3>Select a subject</h3>
+            <p>Choose a subject above to view its attendance report.</p>
+          </div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    let subjects = [];
+    let activeSubjectId = null;
+
+    async function init() {
+      const user = await requireProfessor('/login');
+      if (!user) return;
+      document.getElementById('logo-nav').innerHTML = window.LOGO_SVG;
+      initNavbar(user);
+
+      const { subjects: subs } = await api('/api/prof/subjects');
+      subjects = subs;
+
+      const tabsEl = document.getElementById('subject-tabs');
+      if (subs.length === 0) {
+        tabsEl.innerHTML = '<div style="color:var(--text-muted);font-size:0.875rem">No subjects yet.</div>';
+        return;
+      }
+      tabsEl.innerHTML = subs.map(s => `
+        <button class="subject-tab-btn" id="tab-${s.id}" onclick="loadReport(${s.id})">${s.name}</button>
+      `).join('');
+
+      // Pre-select from query param
+      const subjectId = new URLSearchParams(window.location.search).get('subject');
+      const firstId = subjectId && subs.find(s => s.id == subjectId) ? parseInt(subjectId) : subs[0].id;
+      loadReport(firstId);
+    }
+
+    async function loadReport(subjectId) {
+      activeSubjectId = subjectId;
+      document.querySelectorAll('.subject-tab-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById(`tab-${subjectId}`).classList.add('active');
+
+      const container = document.getElementById('report-content');
+      container.innerHTML = `<div style="text-align:center;padding:3rem"><div class="spinner spinner-lg" style="margin:0 auto"></div></div>`;
+
+      try {
+        const { subject, students, totalSessions } = await api(`/api/prof/reports/${subjectId}`);
+
+        const avgPct = students.length > 0
+          ? Math.round(students.reduce((a, s) => a + s.percentage, 0) / students.length) : 0;
+        const below75 = students.filter(s => s.percentage < 75).length;
+
+        container.innerHTML = `
+          <div class="report-summary">
+            <div class="stat-card">
+              <div class="stat-value" style="color:var(--accent-light)">${totalSessions}</div>
+              <div class="stat-label">Total Sessions</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" style="color:var(--text-primary)">${students.length}</div>
+              <div class="stat-label">Students</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" style="color:var(--success-light)">${avgPct}%</div>
+              <div class="stat-label">Avg. Attendance</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" style="color:var(--warning-light)">${below75}</div>
+              <div class="stat-label">Below 75%</div>
+            </div>
+          </div>
+
+          <div class="section-header">
+            <div class="section-title">Student-wise Report — ${subject.name}</div>
+            <a href="/api/prof/reports/${subjectId}/csv" class="btn btn-success btn-sm">⬇ Download Full CSV</a>
+          </div>
+
+          ${students.length === 0
+            ? `<div class="empty-state"><div class="empty-icon">👥</div><h3>No students enrolled</h3></div>`
+            : `<div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr><th>#</th><th>Student ID</th><th>Name</th><th>Branch</th><th>Sem</th><th>Sessions Attended</th><th>Percentage</th></tr>
+                  </thead>
+                  <tbody>
+                    ${students.map((s, i) => {
+                      const cls = s.percentage >= 75 ? 'good' : s.percentage >= 50 ? 'warn' : 'bad';
+                      const color = s.percentage >= 75 ? 'var(--success-light)' : s.percentage >= 50 ? 'var(--warning-light)' : 'var(--danger-light)';
+                      return `
+                        <tr>
+                          <td style="color:var(--text-muted)">${i+1}</td>
+                          <td><code style="font-size:0.8rem;background:var(--bg-input);padding:2px 6px;border-radius:4px">${s.id}</code></td>
+                          <td style="font-weight:500">${s.name}</td>
+                          <td style="color:var(--text-muted)">${s.branch || '—'}</td>
+                          <td style="color:var(--text-muted)">${s.semester || '—'}</td>
+                          <td>${s.attended} / ${totalSessions}</td>
+                          <td style="min-width:140px">
+                            <div style="display:flex;align-items:center;gap:8px">
+                              <div style="flex:1">
+                                <div class="pct-bar-bg"><div class="pct-bar-fill ${cls}" style="width:${s.percentage}%"></div></div>
+                              </div>
+                              <span style="font-weight:700;color:${color};width:40px;text-align:right">${s.percentage}%</span>
+                            </div>
+                          </td>
+                        </tr>`;
+                    }).join('')}
+                  </tbody>
+                </table>
+              </div>`}`;
+      } catch (err) {
+        container.innerHTML = `<div class="alert alert-error">${err.message}</div>`;
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>

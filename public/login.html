@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Login — NTProxy | IIIT Surat</title>
+  <meta name="description" content="Sign in to NTProxy, the QR Attendance Management System for IIIT Surat."/>
+  <link rel="stylesheet" href="/css/style.css"/>
+  <style>
+    .login-page {
+      min-height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+      padding: 2rem 1rem;
+    }
+    .login-wrap {
+      width: 100%; max-width: 440px;
+    }
+    .login-header { text-align: center; margin-bottom: 2rem; }
+    .login-logo { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 1rem; }
+    .login-logo .logo-icon { width: 48px; height: 48px; }
+    .login-brand { font-size: 1.8rem; font-weight: 800; }
+    .login-brand span { color: var(--accent-light); }
+    .login-college { font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.25rem; }
+    .login-tagline { font-size: 1rem; color: var(--text-muted); margin-top: 0.75rem; }
+
+    .login-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      padding: 2rem;
+      box-shadow: var(--shadow-lg);
+    }
+    .role-tabs {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      background: var(--bg-base);
+      border-radius: var(--radius-md);
+      padding: 4px;
+      margin-bottom: 1.75rem;
+    }
+    .role-tab {
+      padding: 0.6rem;
+      border: none; border-radius: var(--radius-sm);
+      background: transparent;
+      color: var(--text-secondary);
+      font-family: var(--font); font-size: 0.875rem; font-weight: 500;
+      cursor: pointer; transition: var(--transition);
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+    }
+    .role-tab.active {
+      background: var(--accent);
+      color: white;
+      box-shadow: 0 2px 10px var(--accent-glow);
+    }
+    .role-tab:hover:not(.active) { color: var(--text-primary); background: var(--bg-card); }
+
+    .login-btn-submit {
+      width: 100%; padding: 0.85rem;
+      background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+      border: none; border-radius: var(--radius-md);
+      color: white; font-family: var(--font); font-size: 0.95rem; font-weight: 600;
+      cursor: pointer; transition: var(--transition);
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      box-shadow: 0 4px 15px var(--accent-glow);
+      margin-top: 0.5rem;
+    }
+    .login-btn-submit:hover { transform: translateY(-1px); box-shadow: 0 8px 25px var(--accent-glow); }
+    .login-btn-submit:active { transform: translateY(0); }
+
+    .demo-info {
+      margin-top: 1.5rem;
+      background: rgba(99,102,241,0.08);
+      border: 1px solid rgba(99,102,241,0.2);
+      border-radius: var(--radius-md);
+      padding: 1rem;
+    }
+    .demo-info h4 { font-size: 0.8rem; font-weight: 600; color: var(--accent-light); margin-bottom: 0.6rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .demo-row { display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.3rem; }
+    .demo-row code { color: var(--text-primary); font-family: monospace; background: var(--bg-base); padding: 1px 6px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <div class="page-bg"></div>
+
+  <div class="login-page">
+    <div class="login-wrap">
+      <div class="login-header">
+        <div class="login-logo">
+          <div id="logo-mount"></div>
+          <div>
+            <div class="login-brand">NT<span>Proxy</span></div>
+            <div class="login-college">IIIT Surat</div>
+          </div>
+        </div>
+        <p class="login-tagline">QR-Based Attendance Management</p>
+      </div>
+
+      <div class="login-card">
+        <div class="role-tabs">
+          <button class="role-tab active" id="tab-student" onclick="setRole('student')">
+            👨‍🎓 Student
+          </button>
+          <button class="role-tab" id="tab-professor" onclick="setRole('professor')">
+            👨‍🏫 Professor
+          </button>
+        </div>
+
+        <div id="error-msg" class="alert alert-error" style="display:none"></div>
+
+        <form id="login-form" novalidate>
+          <div class="form-group">
+            <label class="form-label" for="user-id" id="id-label">Student ID</label>
+            <input class="form-control" type="text" id="user-id" name="id"
+              placeholder="e.g. STU001" autocomplete="username" required/>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="password">Password</label>
+            <input class="form-control" type="password" id="password" name="password"
+              placeholder="Enter your password" autocomplete="current-password" required/>
+          </div>
+          <button class="login-btn-submit" type="submit" id="submit-btn">
+            <span id="btn-text">Sign In</span>
+            <span class="spinner" id="btn-spinner" style="display:none"></span>
+          </button>
+        </form>
+
+        <div class="demo-info">
+          <h4>🔑 Demo Credentials</h4>
+          <div class="demo-row"><span>Professors:</span> <code>PROF001 / PROF002 / PROF003</code></div>
+          <div class="demo-row"><span>Students:</span> <code>STU001 – STU010</code></div>
+          <div class="demo-row"><span>Password:</span> <code>password123</code></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    // Mount logo SVG
+    document.getElementById('logo-mount').innerHTML = window.LOGO_SVG;
+    document.querySelector('.logo-icon').style.cssText = 'width:48px;height:48px';
+
+    let currentRole = 'student';
+    const redirectUrl = new URLSearchParams(window.location.search).get('redirect');
+
+    // Auto-redirect if already logged in
+    getCurrentUser().then(user => {
+      if (user) {
+        if (redirectUrl) return window.location.href = redirectUrl;
+        window.location.href = user.role === 'professor' ? '/prof/dashboard' : '/student/dashboard';
+      }
+    });
+
+    function setRole(role) {
+      currentRole = role;
+      document.getElementById('tab-student').classList.toggle('active', role === 'student');
+      document.getElementById('tab-professor').classList.toggle('active', role === 'professor');
+      document.getElementById('id-label').textContent = role === 'student' ? 'Student ID' : 'Professor ID';
+      document.getElementById('user-id').placeholder = role === 'student' ? 'e.g. STU001' : 'e.g. PROF001';
+    }
+
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const id = document.getElementById('user-id').value.trim();
+      const password = document.getElementById('password').value;
+      const errEl = document.getElementById('error-msg');
+      const spinner = document.getElementById('btn-spinner');
+      const btnText = document.getElementById('btn-text');
+
+      errEl.style.display = 'none';
+      spinner.style.display = '';
+      btnText.textContent = 'Signing in...';
+      document.getElementById('submit-btn').disabled = true;
+
+      try {
+        await api('/api/login', { method: 'POST', body: { id, password, role: currentRole } });
+        if (redirectUrl) {
+          window.location.href = redirectUrl;
+        } else {
+          window.location.href = currentRole === 'professor' ? '/prof/dashboard' : '/student/dashboard';
+        }
+      } catch (err) {
+        errEl.textContent = '⚠ ' + err.message;
+        errEl.style.display = 'flex';
+        spinner.style.display = 'none';
+        btnText.textContent = 'Sign In';
+        document.getElementById('submit-btn').disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

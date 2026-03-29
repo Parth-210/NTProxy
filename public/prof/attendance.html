@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Attendance — NTProxy</title>
+  <link rel="stylesheet" href="/css/style.css"/>
+  <style>
+    .att-header-bar {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 1.25rem 1.5rem;
+      display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .toggle-row { display: flex; align-items: center; gap: 10px; font-size: 0.875rem; }
+  </style>
+</head>
+<body>
+  <div class="page-bg"></div>
+  <div class="page-wrap">
+
+    <nav class="navbar">
+      <div class="navbar-inner">
+        <a href="/prof/dashboard" class="navbar-brand">
+          <div id="logo-nav"></div>
+          <div><span class="brand-name">NTProxy</span><div class="brand-sub">IIIT Surat</div></div>
+        </a>
+        <div class="navbar-right">
+          <a id="back-session" href="/prof/dashboard" class="btn btn-ghost btn-sm">← Back</a>
+          <div class="navbar-user">
+            <div class="user-avatar" id="navbar-avatar">PR</div>
+            <span id="navbar-name">Professor</span>
+          </div>
+          <button class="btn btn-ghost btn-sm" id="logout-btn">Sign Out</button>
+        </div>
+      </div>
+    </nav>
+
+    <div class="page-header">
+      <div class="container">
+        <h1 id="att-page-title">Session Attendance</h1>
+        <p id="att-page-sub">View and edit attendance for this session</p>
+      </div>
+    </div>
+
+    <main class="main-content">
+      <div class="container">
+
+        <div class="att-header-bar">
+          <div class="stats-grid" style="flex:1;margin:0">
+            <div class="stat-card" style="padding:0.75rem 1rem">
+              <div class="stat-value" id="stat-present" style="font-size:1.5rem;color:var(--success-light)">—</div>
+              <div class="stat-label">Present</div>
+            </div>
+            <div class="stat-card" style="padding:0.75rem 1rem">
+              <div class="stat-value" id="stat-absent" style="font-size:1.5rem;color:var(--danger-light)">—</div>
+              <div class="stat-label">Absent</div>
+            </div>
+            <div class="stat-card" style="padding:0.75rem 1rem">
+              <div class="stat-value" id="stat-total" style="font-size:1.5rem">—</div>
+              <div class="stat-label">Total</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:0.75rem;flex-wrap:wrap">
+            <button class="btn btn-ghost btn-sm" onclick="loadAttendance()">↺ Refresh</button>
+            <a id="csv-link" href="#" class="btn btn-success btn-sm">⬇ Download CSV</a>
+          </div>
+        </div>
+
+        <div class="section-header">
+          <div class="section-title">Student List</div>
+          <div style="font-size:0.8rem;color:var(--text-muted)">Toggle to edit attendance</div>
+        </div>
+
+        <div id="att-container">
+          <div class="empty-state"><div class="spinner spinner-lg" style="margin:0 auto 1rem"></div><p>Loading...</p></div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    const sessionId = new URLSearchParams(window.location.search).get('id');
+
+    async function init() {
+      const user = await requireProfessor('/login');
+      if (!user) return;
+      if (!sessionId) { window.location.href = '/prof/dashboard'; return; }
+      document.getElementById('logo-nav').innerHTML = window.LOGO_SVG;
+      initNavbar(user);
+      document.getElementById('back-session').href = `/prof/session?id=${sessionId}`;
+      document.getElementById('csv-link').href = `/api/prof/session/${sessionId}/attendance/csv`;
+      loadAttendance();
+    }
+
+    async function loadAttendance() {
+      const container = document.getElementById('att-container');
+      try {
+        const { students, presentCount, totalCount, session } = await api(`/api/prof/session/${sessionId}/attendance`);
+        const absentCount = totalCount - presentCount;
+
+        document.getElementById('stat-present').textContent = presentCount;
+        document.getElementById('stat-absent').textContent = absentCount;
+        document.getElementById('stat-total').textContent = totalCount;
+
+        if (students.length === 0) {
+          container.innerHTML = `<div class="empty-state"><div class="empty-icon">👥</div><h3>No students enrolled</h3><p>Enroll students in this subject from the dashboard.</p></div>`;
+          return;
+        }
+
+        container.innerHTML = `
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th><th>Student ID</th><th>Name</th><th>Branch</th><th>Status</th><th>Marked At</th><th>Edit</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${students.map((s, i) => `
+                  <tr id="row-${s.id}">
+                    <td style="color:var(--text-muted)">${i+1}</td>
+                    <td><code style="font-size:0.8rem;background:var(--bg-input);padding:2px 6px;border-radius:4px">${s.id}</code></td>
+                    <td style="font-weight:500">${s.name}</td>
+                    <td style="color:var(--text-muted)">${s.branch || '—'}</td>
+                    <td id="status-${s.id}">
+                      ${s.present
+                        ? `<span class="badge badge-success">✓ Present</span>`
+                        : `<span class="badge badge-danger">✕ Absent</span>`}
+                    </td>
+                    <td style="color:var(--text-muted);font-size:0.8rem">${s.present ? formatDateTime(s.timestamp) : '—'}</td>
+                    <td>
+                      <label class="toggle-switch">
+                        <input type="checkbox" ${s.present ? 'checked' : ''} onchange="toggleAttendance('${s.id}', this.checked)"/>
+                        <span class="toggle-slider"></span>
+                      </label>
+                    </td>
+                  </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>`;
+      } catch (err) {
+        container.innerHTML = `<div class="alert alert-error">${err.message}</div>`;
+      }
+    }
+
+    async function toggleAttendance(studentId, present) {
+      const statusEl = document.getElementById(`status-${studentId}`);
+      try {
+        await api(`/api/prof/session/${sessionId}/attendance/toggle`, {
+          method: 'POST', body: { studentId, present }
+        });
+        statusEl.innerHTML = present
+          ? `<span class="badge badge-success">✓ Present</span>`
+          : `<span class="badge badge-danger">✕ Absent</span>`;
+
+        // Update counts
+        const presentCount = parseInt(document.getElementById('stat-present').textContent) || 0;
+        const absentCount  = parseInt(document.getElementById('stat-absent').textContent) || 0;
+        if (present) {
+          document.getElementById('stat-present').textContent = presentCount + 1;
+          document.getElementById('stat-absent').textContent = Math.max(0, absentCount - 1);
+        } else {
+          document.getElementById('stat-present').textContent = Math.max(0, presentCount - 1);
+          document.getElementById('stat-absent').textContent = absentCount + 1;
+        }
+        showToast(`Attendance ${present ? 'marked present' : 'marked absent'} for student.`, 'success');
+      } catch (err) {
+        showToast(err.message, 'error');
+        // Revert toggle
+        document.querySelector(`#row-${studentId} input[type=checkbox]`).checked = !present;
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>

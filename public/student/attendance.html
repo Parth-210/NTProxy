@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Attendance History — NTProxy</title>
+  <link rel="stylesheet" href="/css/style.css"/>
+  <style>
+    .subject-select-bar {
+      display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;
+      margin-bottom: 1.5rem;
+    }
+    .subject-select-bar select { flex: 1; min-width: 200px; }
+    .att-summary-bar {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .att-summary-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 1rem 1.2rem;
+      display: flex; flex-direction: column; gap: 0.3rem;
+    }
+    .att-summary-val { font-size: 1.6rem; font-weight: 800; }
+    .att-summary-lbl { font-size: 0.78rem; color: var(--text-muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; }
+    .present-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--success); display: inline-block; }
+    .absent-dot  { width: 10px; height: 10px; border-radius: 50%; background: var(--danger); display: inline-block; }
+  </style>
+</head>
+<body>
+  <div class="page-bg"></div>
+  <div class="page-wrap">
+
+    <nav class="navbar">
+      <div class="navbar-inner">
+        <a href="/student/dashboard" class="navbar-brand">
+          <div id="logo-nav"></div>
+          <div><span class="brand-name">NTProxy</span><div class="brand-sub">IIIT Surat</div></div>
+        </a>
+        <div class="navbar-right">
+          <a href="/student/dashboard" class="btn btn-ghost btn-sm">← Dashboard</a>
+          <a href="/scan" class="btn btn-primary btn-sm">📷 Scan QR</a>
+          <div class="navbar-user">
+            <div class="user-avatar" id="navbar-avatar">ST</div>
+            <span id="navbar-name">Student</span>
+          </div>
+          <button class="btn btn-ghost btn-sm" id="logout-btn">Sign Out</button>
+        </div>
+      </div>
+    </nav>
+
+    <div class="page-header">
+      <div class="container">
+        <h1>📋 Attendance History</h1>
+        <p>Date-wise attendance record for your subjects</p>
+      </div>
+    </div>
+
+    <main class="main-content">
+      <div class="container">
+
+        <div class="subject-select-bar">
+          <select class="form-control" id="subject-select" onchange="loadAttendance()">
+            <option value="">Select a subject...</option>
+          </select>
+        </div>
+
+        <div id="att-summary" class="att-summary-bar" style="display:none">
+          <div class="att-summary-card">
+            <div class="att-summary-val" id="s-pct" style="color:var(--accent-light)">—%</div>
+            <div class="att-summary-lbl">Attendance %</div>
+          </div>
+          <div class="att-summary-card">
+            <div class="att-summary-val" id="s-present" style="color:var(--success-light)">—</div>
+            <div class="att-summary-lbl">Sessions Present</div>
+          </div>
+          <div class="att-summary-card">
+            <div class="att-summary-val" id="s-absent" style="color:var(--danger-light)">—</div>
+            <div class="att-summary-lbl">Sessions Absent</div>
+          </div>
+          <div class="att-summary-card">
+            <div class="att-summary-val" id="s-total" style="color:var(--text-primary)">—</div>
+            <div class="att-summary-lbl">Total Sessions</div>
+          </div>
+        </div>
+
+        <div id="att-table-container">
+          <div class="empty-state">
+            <div class="empty-icon">📋</div>
+            <h3>Select a subject</h3>
+            <p>Choose a subject above to view your attendance history.</p>
+          </div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    let subjects = [];
+
+    async function init() {
+      const user = await requireStudent('/login');
+      if (!user) return;
+      document.getElementById('logo-nav').innerHTML = window.LOGO_SVG;
+      initNavbar(user);
+
+      const { subjects: subs } = await api('/api/student/subjects');
+      subjects = subs;
+      const sel = document.getElementById('subject-select');
+      subs.forEach(s => {
+        const opt = document.createElement('option');
+        opt.value = s.id;
+        opt.textContent = `${s.name} (${s.percentage}%)`;
+        sel.appendChild(opt);
+      });
+
+      // Pre-select from query param
+      const subjectId = new URLSearchParams(window.location.search).get('subject');
+      if (subjectId) { sel.value = subjectId; loadAttendance(); }
+    }
+
+    async function loadAttendance() {
+      const subjectId = document.getElementById('subject-select').value;
+      const container = document.getElementById('att-table-container');
+      const summaryEl = document.getElementById('att-summary');
+      if (!subjectId) { summaryEl.style.display = 'none'; return; }
+
+      container.innerHTML = `<div style="text-align:center;padding:3rem"><div class="spinner spinner-lg" style="margin:0 auto"></div></div>`;
+
+      try {
+        const { records, attended, total, percentage, subject } = await api(`/api/student/attendance/${subjectId}`);
+        const absent = total - attended;
+        const cls = percentage >= 75 ? 'var(--success-light)' : percentage >= 50 ? 'var(--warning-light)' : 'var(--danger-light)';
+
+        summaryEl.style.display = 'grid';
+        document.getElementById('s-pct').textContent = `${percentage}%`;
+        document.getElementById('s-pct').style.color = cls;
+        document.getElementById('s-present').textContent = attended;
+        document.getElementById('s-absent').textContent = absent;
+        document.getElementById('s-total').textContent = total;
+
+        if (records.length === 0) {
+          container.innerHTML = `<div class="empty-state"><div class="empty-icon">📅</div><h3>No sessions yet</h3><p>No attendance sessions have been recorded for this subject.</p></div>`;
+          return;
+        }
+
+        container.innerHTML = `
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Date</th>
+                  <th>Time</th>
+                  <th>Status</th>
+                  <th>Marked At</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${records.map((r, i) => `
+                  <tr>
+                    <td style="color:var(--text-muted)">${i+1}</td>
+                    <td>${formatDate(r.start_time)}</td>
+                    <td>${formatTime(r.start_time)}</td>
+                    <td>
+                      ${r.present
+                        ? `<span class="badge badge-success"><span class="present-dot"></span> Present</span>`
+                        : `<span class="badge badge-danger"><span class="absent-dot"></span> Absent</span>`
+                      }
+                    </td>
+                    <td style="color:var(--text-muted)">${r.present ? formatDateTime(r.marked_at) : '—'}</td>
+                  </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>`;
+      } catch (err) {
+        container.innerHTML = `<div class="alert alert-error">${err.message}</div>`;
+        summaryEl.style.display = 'none';
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>
