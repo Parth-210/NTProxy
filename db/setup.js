@@ -1,6 +1,7 @@
 const initSqlJs = require('sql.js');
 const path = require('path');
 const fs = require('fs');
+const bcrypt = require('bcryptjs');
 
 const DB_PATH = path.join(__dirname, '..', 'ntproxy.db');
 let _db = null;
@@ -75,6 +76,13 @@ async function initDb() {
   _db.run('PRAGMA foreign_keys = ON');
 
   createTables();
+  
+  // Check if seeding is needed (no professors)
+  const profCount = get('SELECT COUNT(*) as count FROM professors').count;
+  if (profCount === 0) {
+    console.log('🌱 Seed: No data found, seeding demo data...');
+    seedDemoData();
+  }
 
   // Auto-save every 15 s
   setInterval(saveDb, 15000);
@@ -115,6 +123,65 @@ function createTables() {
   _db.run(`CREATE TABLE IF NOT EXISTS user_sessions (
     sid TEXT PRIMARY KEY, sess TEXT NOT NULL, expired INTEGER NOT NULL
   )`);
+  saveDb();
+}
+
+function seedDemoData() {
+  const salt = bcrypt.genSaltSync(10);
+  const passwordHash = bcrypt.hashSync('password123', salt);
+
+  // Professors
+  const profs = [
+    ['PROF001', 'Dr. Amit Sharma', passwordHash],
+    ['PROF002', 'Dr. Priya Patel', passwordHash],
+    ['PROF003', 'Dr. Rajesh Kumar', passwordHash]
+  ];
+  profs.forEach(p => _db.run('INSERT INTO professors (id, name, password_hash) VALUES (?, ?, ?)', p));
+
+  // Students
+  const students = [
+    ['STU001', 'Arjun Mehta', passwordHash, 'CSE', 5],
+    ['STU002', 'Sneha Gupta', passwordHash, 'CSE', 5],
+    ['STU003', 'Rohan Singh', passwordHash, 'IT', 3],
+    ['STU004', 'Ananya Desai', passwordHash, 'CSE', 5],
+    ['STU005', 'Vikram Joshi', passwordHash, 'ECE', 7],
+    ['STU006', 'Kavya Nair', passwordHash, 'IT', 3],
+    ['STU007', 'Aditya Verma', passwordHash, 'CSE', 5],
+    ['STU008', 'Ishita Sharma', passwordHash, 'ECE', 7],
+    ['STU009', 'Manav Patel', passwordHash, 'IT', 3],
+    ['STU010', 'Divya Reddy', passwordHash, 'CSE', 5]
+  ];
+  students.forEach(s => _db.run('INSERT INTO students (id, name, password_hash, branch, semester) VALUES (?, ?, ?, ?, ?)', s));
+
+  // Subjects
+  const subs = [
+    ['Data Structures', 'PROF001'],
+    ['Database Systems', 'PROF001'],
+    ['Computer Networks', 'PROF002'],
+    ['Operating Systems', 'PROF002'],
+    ['Digital Electronics', 'PROF003']
+  ];
+  const subjectIds = [];
+  subs.forEach(s => {
+    _db.run('INSERT INTO subjects (name, professor_id) VALUES (?, ?)', s);
+    const res = _db.exec('SELECT last_insert_rowid()');
+    subjectIds.push(res[0].values[0][0]);
+  });
+
+  // Enrollments (Match seed logic roughly)
+  const ds_students = ['STU001', 'STU002', 'STU004', 'STU007', 'STU010'];
+  const db_students = ['STU001', 'STU002', 'STU004', 'STU007', 'STU010'];
+  const cn_students = ['STU001', 'STU002', 'STU003', 'STU006', 'STU009'];
+  const os_students = ['STU003', 'STU006', 'STU009'];
+  const de_students = ['STU005', 'STU008'];
+
+  ds_students.forEach(sid => _db.run('INSERT INTO enrollments (student_id, subject_id) VALUES (?, ?)', [sid, subjectIds[0]]));
+  db_students.forEach(sid => _db.run('INSERT INTO enrollments (student_id, subject_id) VALUES (?, ?)', [sid, subjectIds[1]]));
+  cn_students.forEach(sid => _db.run('INSERT INTO enrollments (student_id, subject_id) VALUES (?, ?)', [sid, subjectIds[2]]));
+  os_students.forEach(sid => _db.run('INSERT INTO enrollments (student_id, subject_id) VALUES (?, ?)', [sid, subjectIds[3]]));
+  de_students.forEach(sid => _db.run('INSERT INTO enrollments (student_id, subject_id) VALUES (?, ?)', [sid, subjectIds[4]]));
+
+  console.log('✅ Demo data seeded successfully.');
   saveDb();
 }
 
